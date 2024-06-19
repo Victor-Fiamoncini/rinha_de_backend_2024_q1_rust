@@ -1,0 +1,11 @@
+[package]
+name = "rinha_de_backend_2024_q1_rust"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7.5"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.117"
+time = { version = "0.3.36", features = ["formatting", "macros"] }
+tokio = { version = "1.38.0", features = ["full"] }
