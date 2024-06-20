@@ -1,11 +1,16 @@
 use axum::{
-    handler::Handler,
+    extract::{Path, State},
+    http::StatusCode,
     response::{Html, IntoResponse},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
+use serde::{Deserialize, Serialize};
+use serde_json::json;
 use std::collections::HashMap;
+use std::sync::Arc;
 use time::OffsetDateTime;
+use tokio::sync::Mutex;
 
 #[derive(Default, Clone)]
 struct Account {
@@ -21,32 +26,90 @@ impl Account {
             ..Default::default()
         }
     }
+
+    pub fn transact(&mut self, transaction: Transaction) -> Result<(), &'static str> {
+        match transaction.kind {
+            TransactionType::Credit => {
+                self.balance += transaction.value;
+                self.transactions.push(transaction);
+
+                Ok(())
+            }
+            TransactionType::Debit => {
+                if self.limit > self.balance + transaction.value {
+                    self.balance -= transaction.value;
+                    self.transactions.push(transaction);
+
+                    Ok(())
+                } else {
+                    Err("The amount debited will exceed the client's limit")
+                }
+            }
+        }
+    }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 enum TransactionType {
+    #[serde(rename = "c")]
     Credit,
+    #[serde(rename = "d")]
     Debit,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize, Deserialize)]
 struct Transaction {
+    #[serde(rename = "valor")]
     value: i64,
+    #[serde(rename = "tipo")]
     kind: TransactionType,
+    #[serde(rename = "descricao")]
     description: String,
+    #[serde(
+        rename = "realizada_em",
+        with = "time::serde::rfc3339",
+        default = "OffsetDateTime::now_utc"
+    )]
     created_at: OffsetDateTime,
 }
+
+type AppState = Arc<Mutex<HashMap<u8, Account>>>;
 
 async fn health() -> impl IntoResponse {
     Html("Server is alive!")
 }
 
-async fn create_transaction() -> impl IntoResponse {
-    "Created transaction"
+async fn create_transaction(
+    Path(account_id): Path<u8>,
+    State(accounts): State<AppState>,
+    Json(transaction): Json<Transaction>,
+) -> impl IntoResponse {
+    match accounts.lock().await.get_mut(&account_id) {
+        Some(account) => match account.transact(transaction) {
+            Ok(()) => Ok(Json(
+                json!({"limite": account.limit, "saldo": account.balance}),
+            )),
+            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+        },
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
-async fn view_account() -> impl IntoResponse {
-    "Client account"
+async fn view_account(
+    Path(account_id): Path<u8>,
+    State(accounts): State<AppState>,
+) -> impl IntoResponse {
+    match accounts.lock().await.get(&account_id) {
+        Some(account) => Ok(Json(json!({
+            "saldo": {
+                "data_extrato": OffsetDateTime::now_utc(),
+                "limite": account.limit,
+                "total": account.balance
+            },
+            "ultimas_transacoes": account.transactions
+        }))),
+        None => Err(StatusCode::NOT_FOUND),
+    }
 }
 
 #[tokio::main]
@@ -63,7 +126,7 @@ async fn main() {
         .route("/health", get(health))
         .route("/clientes/:id/transacoes", post(create_transaction))
         .route("/clientes/:id/extrato", get(view_account))
-        .with_state(accounts);
+        .with_state(Arc::new(Mutex::new(accounts)));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
 
