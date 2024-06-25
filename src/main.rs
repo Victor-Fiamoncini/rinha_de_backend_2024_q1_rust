@@ -9,8 +9,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
 use std::sync::Arc;
-use time::OffsetDateTime;
-use tokio::sync::Mutex;
+use time::{format_description::well_known::Rfc3339, OffsetDateTime};
+use tokio::sync::RwLock;
 
 #[derive(Default, Clone)]
 struct Account {
@@ -73,7 +73,7 @@ struct Transaction {
     created_at: OffsetDateTime,
 }
 
-type AppState = Arc<Mutex<HashMap<u8, Account>>>;
+type AppState = Arc<HashMap<u8, RwLock<Account>>>;
 
 async fn health() -> impl IntoResponse {
     Html("Server is alive!")
@@ -84,13 +84,17 @@ async fn create_transaction(
     State(accounts): State<AppState>,
     Json(transaction): Json<Transaction>,
 ) -> impl IntoResponse {
-    match accounts.lock().await.get_mut(&account_id) {
-        Some(account) => match account.transact(transaction) {
-            Ok(()) => Ok(Json(
-                json!({"limite": account.limit, "saldo": account.balance}),
-            )),
-            Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
-        },
+    match accounts.get(&account_id) {
+        Some(account) => {
+            let mut account = account.write().await;
+
+            match account.transact(transaction) {
+                Ok(()) => Ok(Json(
+                    json!({"limite": account.limit, "saldo": account.balance}),
+                )),
+                Err(_) => Err(StatusCode::UNPROCESSABLE_ENTITY),
+            }
+        }
         None => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -99,34 +103,38 @@ async fn view_account(
     Path(account_id): Path<u8>,
     State(accounts): State<AppState>,
 ) -> impl IntoResponse {
-    match accounts.lock().await.get(&account_id) {
-        Some(account) => Ok(Json(json!({
-            "saldo": {
-                "data_extrato": OffsetDateTime::now_utc(),
-                "limite": account.limit,
-                "total": account.balance
-            },
-            "ultimas_transacoes": account.transactions
-        }))),
+    match accounts.get(&account_id) {
+        Some(account) => {
+            let account = account.read().await;
+
+            Ok(Json(json!({
+                "saldo": {
+                    "data_extrato": OffsetDateTime::now_utc().format(&Rfc3339).unwrap(),
+                    "limite": account.limit,
+                    "total": account.balance
+                },
+                "ultimas_transacoes": account.transactions
+            })))
+        }
         None => Err(StatusCode::NOT_FOUND),
     }
 }
 
 #[tokio::main]
 async fn main() {
-    let accounts = HashMap::<u8, Account>::from_iter([
-        (1, Account::with_limit(100_000)),
-        (2, Account::with_limit(80_000)),
-        (3, Account::with_limit(1_000_000)),
-        (4, Account::with_limit(10_000_000)),
-        (5, Account::with_limit(500_000)),
+    let accounts = HashMap::<u8, RwLock<Account>>::from_iter([
+        (1, RwLock::new(Account::with_limit(100_000))),
+        (2, RwLock::new(Account::with_limit(80_000))),
+        (3, RwLock::new(Account::with_limit(1_000_000))),
+        (4, RwLock::new(Account::with_limit(10_000_000))),
+        (5, RwLock::new(Account::with_limit(500_000))),
     ]);
 
     let app = Router::new()
         .route("/health", get(health))
         .route("/clientes/:id/transacoes", post(create_transaction))
         .route("/clientes/:id/extrato", get(view_account))
-        .with_state(Arc::new(Mutex::new(accounts)));
+        .with_state(Arc::new(accounts));
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
 
