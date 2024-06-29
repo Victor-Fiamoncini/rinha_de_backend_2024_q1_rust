@@ -43,12 +43,20 @@ struct Account {
     transactions: RingBuffer<Transaction>,
 }
 
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(try_from = "String")]
 struct Description(String);
 
-impl TryForm<String> for Description {
+impl TryFrom<String> for Description {
     type Error = &'static str;
 
-    fn try_from(value: String) -> Result<Self, Self::Error> {}
+    fn try_from(value: String) -> Result<Self, Self::Error> {
+        if value.is_empty() || value.len() > 10 {
+            Err("Descrição inválida")
+        } else {
+            Ok(Self(value))
+        }
+    }
 }
 
 impl Account {
@@ -96,7 +104,7 @@ struct Transaction {
     #[serde(rename = "tipo")]
     kind: TransactionType,
     #[serde(rename = "descricao")]
-    description: String,
+    description: Description,
     #[serde(
         rename = "realizada_em",
         with = "time::serde::rfc3339",
