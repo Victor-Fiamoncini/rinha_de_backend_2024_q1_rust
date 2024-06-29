@@ -7,16 +7,48 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::sync::Arc;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::RwLock;
+
+#[derive(Clone, Serialize)]
+struct RingBuffer<T>(VecDeque<T>);
+
+impl<T> Default for RingBuffer<T> {
+    fn default() -> Self {
+        Self::with_capacity(10)
+    }
+}
+
+impl<T> RingBuffer<T> {
+    fn with_capacity(capacity: usize) -> Self {
+        Self(VecDeque::with_capacity(capacity))
+    }
+
+    fn push(&mut self, item: T) {
+        if self.0.len() > self.0.capacity() {
+            self.0.pop_back();
+            self.0.push_front(item);
+        } else {
+            self.0.push_front(item);
+        }
+    }
+}
 
 #[derive(Default, Clone)]
 struct Account {
     balance: i64,
     limit: i64,
-    transactions: Vec<Transaction>,
+    transactions: RingBuffer<Transaction>,
+}
+
+struct Description(String);
+
+impl TryForm<String> for Description {
+    type Error = &'static str;
+
+    fn try_from(value: String) -> Result<Self, Self::Error> {}
 }
 
 impl Account {
@@ -36,7 +68,7 @@ impl Account {
                 Ok(())
             }
             TransactionType::Debit => {
-                if self.limit > self.balance + transaction.value {
+                if self.balance + self.limit >= self.limit {
                     self.balance -= transaction.value;
                     self.transactions.push(transaction);
 
@@ -136,7 +168,7 @@ async fn main() {
         .route("/clientes/:id/extrato", get(view_account))
         .with_state(Arc::new(accounts));
 
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:5000").await.unwrap();
+    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
 
     axum::serve(listener, app).await.unwrap();
 }
