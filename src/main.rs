@@ -8,9 +8,38 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::{HashMap, VecDeque};
+use std::env;
 use std::sync::Arc;
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::RwLock;
+
+#[tokio::main]
+async fn main() {
+    let port = env::var("PORT")
+        .ok()
+        .and_then(|port| port.parse::<u16>().ok())
+        .unwrap_or(9999);
+
+    let accounts = HashMap::<u8, RwLock<Account>>::from_iter([
+        (1, RwLock::new(Account::with_limit(100_000))),
+        (2, RwLock::new(Account::with_limit(80_000))),
+        (3, RwLock::new(Account::with_limit(1_000_000))),
+        (4, RwLock::new(Account::with_limit(10_000_000))),
+        (5, RwLock::new(Account::with_limit(500_000))),
+    ]);
+
+    let app = Router::new()
+        .route("/health", get(health))
+        .route("/clientes/:id/transacoes", post(create_transaction))
+        .route("/clientes/:id/extrato", get(view_account))
+        .with_state(Arc::new(accounts));
+
+    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
+        .await
+        .unwrap();
+
+    axum::serve(listener, app).await.unwrap();
+}
 
 #[derive(Clone, Serialize)]
 struct RingBuffer<T>(VecDeque<T>);
@@ -158,25 +187,4 @@ async fn view_account(
         }
         None => Err(StatusCode::NOT_FOUND),
     }
-}
-
-#[tokio::main]
-async fn main() {
-    let accounts = HashMap::<u8, RwLock<Account>>::from_iter([
-        (1, RwLock::new(Account::with_limit(100_000))),
-        (2, RwLock::new(Account::with_limit(80_000))),
-        (3, RwLock::new(Account::with_limit(1_000_000))),
-        (4, RwLock::new(Account::with_limit(10_000_000))),
-        (5, RwLock::new(Account::with_limit(500_000))),
-    ]);
-
-    let app = Router::new()
-        .route("/health", get(health))
-        .route("/clientes/:id/transacoes", post(create_transaction))
-        .route("/clientes/:id/extrato", get(view_account))
-        .with_state(Arc::new(accounts));
-
-    let listener = tokio::net::TcpListener::bind("0.0.0.0:3000").await.unwrap();
-
-    axum::serve(listener, app).await.unwrap();
 }
