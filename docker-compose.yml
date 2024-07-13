@@ -5,10 +5,12 @@ services:
     build:
       context: .
     hostname: api01
+    environment:
+      - "PORT=3000"
     deploy:
       resources:
         limits:
-          cpus: "0.25"
+          cpus: "0.3"
           memory: "100MB"
 
   api02:
@@ -17,20 +19,32 @@ services:
     ports:
       - "3000:3000"
 
-  nginx:
-    image: nginx:latest
-    volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
-    depends_on:
-      - api01
-      - api02
+  rinha_load_balancer:
+    build:
+      context: .
+      dockerfile: ./load_balancer/Dockerfile
     ports:
       - "9999:9999"
     deploy:
       resources:
         limits:
-          cpus: "1"
+          cpus: "0.9"
           memory: "100MB"
+
+  # nginx:
+  #   image: nginx:latest
+  #   volumes:
+  #     - ./nginx.conf:/etc/nginx/nginx.conf:ro
+  #   depends_on:
+  #     - api01
+  #     - api02
+  #   ports:
+  #     - "9999:9999"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "1"
+  #         memory: "100MB"
 
 networks:
   default:
