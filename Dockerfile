@@ -4,6 +4,9 @@ RUN cargo new --bin app
 
 WORKDIR /app
 
+RUN cargo new --bin load_balancer
+RUN cargo new --bin load_test
+
 COPY Cargo.toml /app/
 COPY Cargo.lock /app/
 RUN cargo build --release
