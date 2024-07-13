@@ -67,7 +67,9 @@ impl LoadBalancer for RinhaAccountBalancer {
 #[tokio::main]
 async fn main() {
     let listener = TcpListener::bind("0.0.0.0:9999").await.unwrap();
-    let http_client = Client::builder(TokioExecutor::new()).build_http::<Body>();
+    let http_client = Client::builder(TokioExecutor::new())
+        .http2_only(true)
+        .build_http::<Body>();
     let addresses = ["api01:3000", "api02:3000"];
 
     #[allow(unused)]
