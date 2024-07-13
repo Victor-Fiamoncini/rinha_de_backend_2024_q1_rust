@@ -68,7 +68,7 @@ impl LoadBalancer for RinhaAccountBalancer {
 async fn main() {
     let listener = TcpListener::bind("0.0.0.0:9999").await.unwrap();
     let http_client = Client::builder(TokioExecutor::new()).build_http::<Body>();
-    let addresses = ["0.0.0.0:9997", "0.0.0.0:9998"];
+    let addresses = ["api01:3000", "api02:3000"];
 
     #[allow(unused)]
     let round_robin = RoundRobinBalancer {
