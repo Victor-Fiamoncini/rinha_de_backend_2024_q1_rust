@@ -457,13 +457,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97b3888a4aecf77e811145cadf6eef5901f4782c53886191b2f693f24761847c"
 
 [[package]]
-name = "load_balancer"
+name = "load_balancer_http"
 version = "0.1.0"
 dependencies = [
  "axum",
  "hyper-util",
  "tokio",
 ]
+
+[[package]]
+name = "load_balancer_tcp"
+version = "0.1.0"
 
 [[package]]
 name = "load_test"
