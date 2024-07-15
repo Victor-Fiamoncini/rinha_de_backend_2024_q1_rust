@@ -19,10 +19,10 @@ services:
     ports:
       - "3000:3000"
 
-  rinha_load_balancer_http:
+  rinha_load_balancer_tcp:
     build:
       context: .
-      dockerfile: ./load_balancer_http/Dockerfile
+      dockerfile: ./load_balancer_tcp/Dockerfile
     ports:
       - "9999:9999"
     deploy:
@@ -30,6 +30,18 @@ services:
         limits:
           cpus: "0.9"
           memory: "100MB"
+
+  # rinha_load_balancer_http:
+  #   build:
+  #     context: .
+  #     dockerfile: ./load_balancer_http/Dockerfile
+  #   ports:
+  #     - "9999:9999"
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: "0.9"
+  #         memory: "100MB"
 
   # nginx:
   #   image: nginx:latest

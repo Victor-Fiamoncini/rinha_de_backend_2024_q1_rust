@@ -468,6 +468,9 @@ dependencies = [
 [[package]]
 name = "load_balancer_tcp"
 version = "0.1.0"
+dependencies = [
+ "tokio",
+]
 
 [[package]]
 name = "load_test"
