@@ -1,5 +1,5 @@
 [workspace]
-members = [ "load_balancer_http", "load_balancer_tcp", "load_test" ]
+members = [ "database", "load_balancer_http", "load_balancer_tcp", "load_test" ]
 
 [package]
 name = "rinha_de_backend_2024_q1_rust"
