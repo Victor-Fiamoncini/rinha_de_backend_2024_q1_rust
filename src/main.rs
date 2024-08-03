@@ -5,11 +5,16 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use database::Database;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
-use std::collections::{HashMap, VecDeque};
-use std::env;
-use std::sync::Arc;
+use std::{
+    collections::{HashMap, VecDeque},
+    env,
+    error::Error,
+    path::Path as FilePath,
+    sync::Arc,
+};
 use time::{format_description::well_known::Rfc3339, OffsetDateTime};
 use tokio::sync::RwLock;
 
@@ -21,11 +26,26 @@ async fn main() {
         .unwrap_or(9999);
 
     let accounts = HashMap::<u8, RwLock<Account>>::from_iter([
-        (1, RwLock::new(Account::with_limit(100_000))),
-        (2, RwLock::new(Account::with_limit(80_000))),
-        (3, RwLock::new(Account::with_limit(1_000_000))),
-        (4, RwLock::new(Account::with_limit(10_000_000))),
-        (5, RwLock::new(Account::with_limit(500_000))),
+        (
+            1,
+            RwLock::new(Account::with_database("account-1.db", 100_000).unwrap()),
+        ),
+        (
+            2,
+            RwLock::new(Account::with_database("account-2.db", 80_000).unwrap()),
+        ),
+        (
+            3,
+            RwLock::new(Account::with_database("account-3.db", 1_000_000).unwrap()),
+        ),
+        (
+            4,
+            RwLock::new(Account::with_database("account-4.db", 10_000_000).unwrap()),
+        ),
+        (
+            5,
+            RwLock::new(Account::with_database("account-5.db", 500_000).unwrap()),
+        ),
     ]);
 
     let app = Router::new()
@@ -50,6 +70,18 @@ impl<T> Default for RingBuffer<T> {
     }
 }
 
+impl<A> FromIterator<A> for RingBuffer<A> {
+    fn from_iter<T: IntoIterator<Item = A>>(iter: T) -> Self {
+        let mut ring_buffer = Self::with_capacity(10);
+
+        for item in iter.into_iter() {
+            ring_buffer.push(item);
+        }
+
+        ring_buffer
+    }
+}
+
 impl<T> RingBuffer<T> {
     fn with_capacity(capacity: usize) -> Self {
         Self(VecDeque::with_capacity(capacity))
@@ -65,11 +97,11 @@ impl<T> RingBuffer<T> {
     }
 }
 
-#[derive(Default, Clone)]
 struct Account {
     balance: i64,
     limit: i64,
     transactions: RingBuffer<Transaction>,
+    database: Database<(i64, Transaction), 128>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -89,32 +121,48 @@ impl TryFrom<String> for Description {
 }
 
 impl Account {
-    pub fn with_limit(limit: i64) -> Self {
-        Account {
+    pub fn with_database(path: impl AsRef<FilePath>, limit: i64) -> Result<Self, Box<dyn Error>> {
+        let mut database = Database::<(i64, Transaction), 128>::from_path(path)?;
+
+        let mut transactions = database.rows().collect::<Vec<_>>();
+
+        let balance = transactions
+            .last()
+            .map(|(balance, _)| *balance)
+            .unwrap_or_default();
+
+        transactions.reverse();
+
+        Ok(Account {
             limit,
-            ..Default::default()
-        }
+            balance,
+            transactions: transactions
+                .into_iter()
+                .map(|(_, transaction)| transaction)
+                .collect(),
+            database,
+        })
     }
 
     pub fn transact(&mut self, transaction: Transaction) -> Result<(), &'static str> {
-        match transaction.kind {
-            TransactionType::Credit => {
-                self.balance += transaction.value;
-                self.transactions.push(transaction);
-
-                Ok(())
-            }
+        let balance = match transaction.kind {
+            TransactionType::Credit => self.balance + transaction.value,
             TransactionType::Debit => {
-                if self.balance + self.limit >= self.limit {
-                    self.balance -= transaction.value;
-                    self.transactions.push(transaction);
-
-                    Ok(())
+                if self.balance + self.limit >= transaction.value {
+                    self.balance - transaction.value
                 } else {
-                    Err("The amount debited will exceed the client's limit")
+                    return Err("The amount debited will exceed the client's limit");
                 }
             }
-        }
+        };
+
+        self.database
+            .insert((balance, transaction.clone()))
+            .map_err(|_| "Error to persist into database")?;
+        self.balance = balance;
+        self.transactions.push(transaction);
+
+        Ok(())
     }
 }
 

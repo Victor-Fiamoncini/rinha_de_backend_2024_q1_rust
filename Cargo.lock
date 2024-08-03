@@ -790,6 +790,7 @@ name = "rinha_de_backend_2024_q1_rust"
 version = "0.1.0"
 dependencies = [
  "axum",
+ "database",
  "serde",
  "serde_json",
  "time",
