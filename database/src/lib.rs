@@ -11,7 +11,7 @@ use std::{
 
 const PAGE_SIZE: usize = 1024 * 4; // 4 kilo-bytes
 
-enum DatabaseError {
+pub enum DatabaseError {
     Io(io::Error),
     Serialize(Box<dyn Error>),
 }
@@ -74,6 +74,10 @@ impl<const ROW_SIZE: usize> Page<ROW_SIZE> {
                 u64::from_be_bytes(buffer) as usize
             };
 
+            if header == 0 {
+                return None;
+            }
+
             cursor += 1;
 
             Some(&row[8..8 + header])
@@ -116,9 +120,14 @@ impl<const ROW_SIZE: usize, T: Serialize + DeserializeOwned> Database<T, ROW_SIZ
 
     pub fn insert(&mut self, row: T) -> Result<(), DatabaseError> {
         self.current_page.insert(row);
-        self.writer.write(self.current_page.as_ref());
-        self.writer
-            .write(&vec![0; PAGE_SIZE - self.current_page.len()]);
+
+        self.writer.write_all(
+            &[
+                self.current_page.as_ref(),
+                &vec![0; PAGE_SIZE - self.current_page.len()],
+            ]
+            .concat(),
+        );
 
         if self.current_page.available_rows() == 0 {
             self.current_page = Page::new();
