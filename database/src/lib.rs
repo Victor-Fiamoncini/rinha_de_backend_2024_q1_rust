@@ -74,10 +74,6 @@ impl<const ROW_SIZE: usize> Page<ROW_SIZE> {
                 u64::from_be_bytes(buffer) as usize
             };
 
-            if header == 0 {
-                return None;
-            }
-
             cursor += 1;
 
             Some(&row[8..8 + header])
@@ -159,11 +155,42 @@ impl<const ROW_SIZE: usize, T: Serialize + DeserializeOwned> Database<T, ROW_SIZ
         })
     }
 
+    fn pages_reverse(&mut self) -> impl Iterator<Item = Page> + '_ {
+        let mut cursor = 1;
+
+        iter::from_fn(move || {
+            let offset = (cursor * PAGE_SIZE) as i64;
+
+            if self.reader.seek(io::SeekFrom::End(-offset)).is_err() {
+                return None;
+            }
+
+            let mut buffer = vec![0; PAGE_SIZE];
+
+            cursor += 1;
+
+            match self.reader.read_exact(&mut buffer) {
+                Ok(()) => Some(Page::from_bytes(buffer).unwrap()),
+                Err(_) => None,
+            }
+        })
+    }
+
     pub fn rows(&mut self) -> impl Iterator<Item = T> + '_ {
         self.pages().flat_map(|page| {
             page.rows()
                 .filter_map(|row| bitcode::deserialize(row).ok())
                 .collect::<Vec<_>>()
+        })
+    }
+
+    pub fn rows_reverse(&mut self) -> impl Iterator<Item = T> + '_ {
+        self.pages_reverse().flat_map(|page| {
+            page.rows()
+                .filter_map(|row| bitcode::deserialize(row).ok())
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
         })
     }
 }
@@ -213,15 +240,45 @@ mod tests {
     fn test_insert_into_database() {
         let tmp = tempdir().unwrap();
         let mut database =
-            Database::<(i64, String), 1024>::from_path(tmp.path().join("test.db")).unwrap();
+            Database::<(i64, String)>::from_path(tmp.path().join("test.db")).unwrap();
 
-        database.insert((50, String::from("Primeira"))).ok();
-        database.insert((-20, String::from("Segunda"))).ok();
+        database.insert((50, String::from("Primeira")));
+        database.insert((-20, String::from("Segunda")));
 
         let mut rows = database.rows();
 
         assert_eq!((50, String::from("Primeira")), rows.next().unwrap());
         assert_eq!((-20, String::from("Segunda")), rows.next().unwrap());
         assert!(rows.next().is_none());
+    }
+
+    #[test]
+    fn test_database_rows() {
+        let tmp = tempdir().unwrap();
+        let mut database = Database::<i64, 2048>::from_path(tmp.path().join("test.db")).unwrap();
+
+        database.insert(1);
+        database.insert(2);
+        database.insert(3);
+        database.insert(4);
+        database.insert(5);
+
+        let rows = database.rows().collect::<Vec<_>>();
+        assert_eq!(vec![1, 2, 3, 4, 5], rows);
+    }
+
+    #[test]
+    fn test_database_rows_reverse() {
+        let tmp = tempdir().unwrap();
+        let mut database = Database::<i64, 2048>::from_path(tmp.path().join("test.db")).unwrap();
+
+        database.insert(1);
+        database.insert(2);
+        database.insert(3);
+        database.insert(4);
+        database.insert(5);
+
+        let rows = database.rows_reverse().collect::<Vec<_>>();
+        assert_eq!(vec![5, 4, 3, 2, 1], rows);
     }
 }
