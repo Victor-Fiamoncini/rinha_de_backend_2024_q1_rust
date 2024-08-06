@@ -124,14 +124,12 @@ impl Account {
     pub fn with_database(path: impl AsRef<FilePath>, limit: i64) -> Result<Self, Box<dyn Error>> {
         let mut database = Database::<(i64, Transaction), 128>::from_path(path)?;
 
-        let mut transactions = database.rows().collect::<Vec<_>>();
+        let transactions = database.rows_reverse().take(10).collect::<Vec<_>>();
 
         let balance = transactions
-            .last()
+            .first()
             .map(|(balance, _)| *balance)
             .unwrap_or_default();
-
-        transactions.reverse();
 
         Ok(Account {
             limit,
