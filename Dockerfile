@@ -5,7 +5,7 @@ RUN cargo new --bin app
 WORKDIR /app
 
 RUN cargo new --bin load_balancer_http
-RUN cargo new --bin load_balancer_tcp
+# RUN cargo new --bin load_balancer_tcp
 RUN cargo new --bin load_test
 
 COPY Cargo.toml /app/

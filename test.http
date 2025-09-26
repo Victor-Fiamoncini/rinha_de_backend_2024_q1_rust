@@ -1,0 +1,18 @@
+### Global Variables
+@baseUrl = http://localhost:9999
+
+### Fetches customer report
+GET {{baseUrl}}/clientes/2/extrato HTTP/1.1
+
+### Creates a new transaction
+POST {{baseUrl}}/clientes/2/transacoes HTTP/1.1
+Content-Type: application/json
+
+{
+    "valor": 3000,
+    "tipo": "d",
+    "descricao": "desc"
+}
+
+### Requests HTTP Load Balancer
+GET {{baseUrl}}/proxy HTTP/1.1
